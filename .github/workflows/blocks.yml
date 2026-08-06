@@ -92,9 +92,9 @@ jobs:
           FLYHUB_BLOCKS_API_BASE_URL: https://flyhub-blocks.yaii.workers.dev
           FLYHUB_BLOCKS_PUBLISH_TOKEN: ${{ secrets.BLOCKS_PUBLISH_TOKEN }}
         run: |
-          daily_ids="community-douban-hot-domestic-tv,community-douban-hot-korean-tv,community-douban-hot-american-tv,community-douban-hot-animation,community-douban-hot-japanese-tv,community-douban-hot-variety-shows,community-anilist-trending,community-bangumi-calendar"
-          weekly_ids="collection-mal-weekdays,collection-guoman-weekdays,collection-mal-rankings"
-          monthly_ids="community-douban-popular-anime-doulist,community-douban-top-animation-movies,community-douban-healing-anime,community-douban-cn-animation-movies,community-tspdt-1000,community-rolling-stone-100-tv,community-wga-101-best-written-tv"
+          daily_ids="community-douban-hot-domestic-tv,community-douban-hot-hong-kong-tv,community-douban-hot-taiwan-tv,community-douban-hot-korean-tv,community-douban-hot-japanese-tv,community-douban-hot-thai-tv,community-douban-hot-american-tv,community-douban-hot-animation,community-douban-hot-variety-shows,community-anilist-trending,community-bangumi-calendar"
+          weekly_ids="collection-mal-weekdays,collection-guoman-weekdays,collection-mal-rankings,collection-global-movie-studios,collection-global-streaming-platforms,community-douban-chinese-best-variety,community-douban-global-best-variety"
+          monthly_ids="collection-domestic-theaters,community-douban-popular-anime-doulist,community-douban-top-animation-movies,community-douban-healing-anime,community-douban-cn-animation-movies,community-tspdt-1000,community-rolling-stone-100-tv,community-wga-101-best-written-tv"
           case "${{ github.event.schedule }}" in
             "0 20 * * *")
               ids="$daily_ids"

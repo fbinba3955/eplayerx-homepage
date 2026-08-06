@@ -78,8 +78,6 @@ interface ChartDefinition {
 	isAnime: boolean;
 	/** TMDB 直出榜单无需二次片名匹配。 */
 	tmdbEndpoint?: string;
-	/** 多个 TMDB 发现条件聚合为同一个精选榜单。 */
-	tmdbEndpoints?: readonly string[];
 	/** 第三方榜单先读取标题，再经 Worker 搜索与详情接口补全元数据。 */
 	fetchItems?: () => Promise<SourceItem[]>;
 }
@@ -93,23 +91,34 @@ const ANIMATION_GENRE_ID = 16;
 const REQUEST_DELAY_MS = 120;
 const MATCH_CONCURRENCY = 8;
 
-const GLOBAL_STUDIO_DISCOVER_ENDPOINTS = GLOBAL_STUDIOS.map((studio) =>
-	`/tmdb/discover/movie?language=zh-CN&page=1&with_companies=${studio.companyId}&sort_by=primary_release_date.desc`,
-);
+/** 国内视频平台剧场分别展示，便于按平台直接进入。 */
+const DOMESTIC_THEATER_CHARTS: readonly ChartDefinition[] = [
+	{ id: "community-iqiyi-lianlian-theater", title: "爱奇艺恋恋剧场", category: "tv", mediaType: "tv", isAnime: false, fetchItems: () => fetchDoulistItems("153511620", { types: ["tv"] }) },
+	{ id: "community-iqiyi-mist-theater", title: "爱奇艺迷雾剧场", category: "tv", mediaType: "tv", isAnime: false, fetchItems: () => fetchDoulistItems("128396349", { types: ["tv"] }) },
+	{ id: "community-iqiyi-xiaodou-theater", title: "爱奇艺小逗剧场", category: "tv", mediaType: "tv", isAnime: false, fetchItems: () => fetchDoulistItems("153511631", { types: ["tv"] }) },
+	{ id: "community-tencent-x-theater", title: "腾讯视频 X 剧场", category: "tv", mediaType: "tv", isAnime: false, fetchItems: () => fetchDoulistItems("155026800", { types: ["tv"] }) },
+	{ id: "community-youku-baiye-theater", title: "优酷白夜剧场", category: "tv", mediaType: "tv", isAnime: false, fetchItems: () => fetchDoulistItems("159320021", { types: ["tv"] }) },
+	{ id: "community-youku-shenghua-theater", title: "优酷生花剧场", category: "tv", mediaType: "tv", isAnime: false, fetchItems: () => fetchDoulistItems("159054707", { types: ["tv"] }) },
+];
 
-const GLOBAL_STREAMING_DISCOVER_ENDPOINTS = [
-	"/tmdb/discover/tv?language=zh-CN&page=1&with_networks=213",
-	"/tmdb/discover/tv?language=zh-CN&page=1&with_networks=2739",
-	"/tmdb/discover/tv?language=zh-CN&page=1&with_networks=49",
-	"/tmdb/discover/tv?language=zh-CN&page=1&with_networks=2552",
-	"/tmdb/discover/tv?language=zh-CN&page=1&with_networks=1024",
-	"/tmdb/discover/movie?language=zh-CN&page=1&with_companies=420",
-	"/tmdb/discover/movie?language=zh-CN&page=1&with_companies=174",
-	"/tmdb/discover/movie?language=zh-CN&page=1&with_companies=33",
-	"/tmdb/discover/movie?language=zh-CN&page=1&with_companies=5",
-	"/tmdb/discover/movie?language=zh-CN&page=1&with_companies=4",
-	"/tmdb/discover/movie?language=zh-CN&page=1&with_companies=41077",
-] as const;
+/** 电影厂牌使用 TMDB 公司维度独立抓取，避免厂牌内容在父级内混合。 */
+const GLOBAL_STUDIO_CHARTS: readonly ChartDefinition[] = GLOBAL_STUDIOS.map((studio) => ({
+	id: `community-zh-${studio.blockIdSuffix}`,
+	title: studio.title,
+	category: "movie",
+	mediaType: "movie",
+	isAnime: false,
+	tmdbEndpoint: `/tmdb/discover/movie?language=zh-CN&page=1&with_companies=${studio.companyId}&sort_by=primary_release_date.desc`,
+}));
+
+/** 流媒体平台仅按平台网络划分，不混入电影厂牌。 */
+const GLOBAL_STREAMING_CHARTS: readonly ChartDefinition[] = [
+	{ id: "community-zh-netflix", title: "Netflix", category: "tv", mediaType: "tv", isAnime: false, tmdbEndpoint: "/tmdb/discover/tv?language=zh-CN&page=1&with_networks=213" },
+	{ id: "community-zh-disney-plus", title: "Disney+", category: "tv", mediaType: "tv", isAnime: false, tmdbEndpoint: "/tmdb/discover/tv?language=zh-CN&page=1&with_networks=2739" },
+	{ id: "community-zh-hbo", title: "HBO", category: "tv", mediaType: "tv", isAnime: false, tmdbEndpoint: "/tmdb/discover/tv?language=zh-CN&page=1&with_networks=49" },
+	{ id: "community-zh-apple-tv-plus", title: "Apple TV+", category: "tv", mediaType: "tv", isAnime: false, tmdbEndpoint: "/tmdb/discover/tv?language=zh-CN&page=1&with_networks=2552" },
+	{ id: "community-zh-prime-video", title: "Prime Video", category: "tv", mediaType: "tv", isAnime: false, tmdbEndpoint: "/tmdb/discover/tv?language=zh-CN&page=1&with_networks=1024" },
+];
 
 const MAL_TOP_KNOWN_IDS: Record<string, number> = {
 	"Kingdom 3rd Season": 46437,
@@ -369,40 +378,9 @@ const FIRST_BATCH_CHARTS: readonly ChartDefinition[] = [
 				(item) => item.title !== "COURT!",
 			),
 	},
-	{
-		id: "collection-domestic-theaters",
-		title: "国内各大剧场精选",
-		category: "tv",
-		mediaType: "tv",
-		isAnime: false,
-		fetchItems: async () => {
-			const theaterLists = await Promise.all([
-				fetchDoulistItems("153511620", { types: ["tv"] }),
-				fetchDoulistItems("128396349", { types: ["tv"] }),
-				fetchDoulistItems("153511631", { types: ["tv"] }),
-				fetchDoulistItems("155026800", { types: ["tv"] }),
-				fetchDoulistItems("159320021", { types: ["tv"] }),
-				fetchDoulistItems("159054707", { types: ["tv"] }),
-			]);
-			return mergeAnimeScheduleItems(...theaterLists);
-		},
-	},
-	{
-		id: "collection-global-movie-studios",
-		title: "全球电影厂牌",
-		category: "movie",
-		mediaType: "movie",
-		isAnime: false,
-		tmdbEndpoints: GLOBAL_STUDIO_DISCOVER_ENDPOINTS,
-	},
-	{
-		id: "collection-global-streaming-platforms",
-		title: "全球流媒体平台",
-		category: "tv",
-		mediaType: "tv",
-		isAnime: false,
-		tmdbEndpoints: GLOBAL_STREAMING_DISCOVER_ENDPOINTS,
-	},
+	...DOMESTIC_THEATER_CHARTS,
+	...GLOBAL_STUDIO_CHARTS,
+	...GLOBAL_STREAMING_CHARTS,
 	{
 		id: "community-douban-hot-domestic-tv",
 		title: "近期热门国产剧",
@@ -1091,25 +1069,6 @@ async function fetchTmdbChart(definition: ChartDefinition): Promise<SnapshotItem
 		.filter((item): item is SnapshotItem => item !== null);
 }
 
-/** 合并多个 TMDB 发现条件，按 TMDB ID 去重并保持来源顺序。 */
-async function fetchMultiTmdbChart(definition: ChartDefinition): Promise<SnapshotItem[]> {
-	const unique = new Map<number, SnapshotItem>();
-	for (const endpoint of definition.tmdbEndpoints || []) {
-		const response = await fetch(new URL(endpoint, API_BASE_URL));
-		if (!response.ok) {
-			throw new Error(`${definition.title} 请求失败：HTTP ${response.status}`);
-		}
-		const payload = await response.json() as TmdbListResponse;
-		for (const item of payload.results || []) {
-			const snapshotItem = toSnapshotItem(item, definition.mediaType);
-			if (snapshotItem && !unique.has(snapshotItem.tmdbId)) {
-				unique.set(snapshotItem.tmdbId, snapshotItem);
-			}
-		}
-	}
-	return [...unique.values()];
-}
-
 /** 构造保存在 D1 的榜单定义，供 /blocks/import-payload 读取。 */
 function createBlockJson(definition: ChartDefinition): string {
 	return JSON.stringify({
@@ -1176,8 +1135,6 @@ async function main(): Promise<void> {
 			let items: SnapshotItem[];
 			if (definition.tmdbEndpoint) {
 				items = await fetchTmdbChart(definition);
-			} else if (definition.tmdbEndpoints) {
-				items = await fetchMultiTmdbChart(definition);
 			} else {
 				console.info(`codex-flyhub-first-batch 阶段=读取来源 榜单=${definition.title}`);
 				const sourceItems = await definition.fetchItems!();

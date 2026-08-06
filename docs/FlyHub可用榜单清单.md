@@ -8,10 +8,10 @@
 
 | 分类 | 榜单 | 更新频率 | 接入状态 | 发布状态 |
 | --- | --- | --- | --- | --- |
-| 精选合集 | 国内各大剧场精选 | 每月 | 已接入 | 已发布 |
-| 精选合集 | 全球电影厂牌 | 每周 | 已接入 | 已发布 |
-| 精选合集 | 全球流媒体平台 | 每周 | 已接入 | 已发布 |
-| 地区剧集 | 国产、港剧、台剧、韩剧、日剧、泰剧、欧美剧热门榜 | 每日 | 已接入 | 已发布 |
+| 剧场精选 | 爱奇艺、腾讯视频、优酷 6 个剧场榜单 | 每月 | 已接入 | 已发布 |
+| 电影厂牌 | 全球 20 个电影厂牌榜单 | 每周 | 已接入 | 已发布 |
+| 流媒体平台 | Netflix、Disney+、HBO、Apple TV+、Prime Video | 每周 | 已接入 | 已发布 |
+| 地区剧集 | 国产、港、台、韩、日、泰、欧美 7 个热门榜 | 每日 | 已接入 | 已发布 |
 | 综艺 | 国内口碑综艺榜、国外口碑综艺榜 | 每周 | 已接入 | 已发布 |
 
 ## 标签说明
@@ -124,15 +124,15 @@
 | 电影专题 | Mtime Top100、电影是什么、CC Collection | 豆瓣/Letterboxd/CC | **按需加入，需确认** | `douban-mtime-top100.ts`、`letterboxd-what-is-reality.ts`、`cc-collection.ts` |
 | 内容分级 | 血腥屠夫、LGBT 电影 | 豆瓣豆列 | **暂不加入默认网格** | `douban-slasher-doulist.ts`、`douban-lgbt-films.ts` |
 
-## 七、平台、厂牌与合集入口
+## 七、平台与厂牌入口
 
-这一类应发布为“合集卡片”，内部平台/厂牌子榜单均保持隐藏，不单独占公共网格。
+这一类均直接展示为独立榜单入口，便于按具体平台或厂牌进入。
 
-| 分类 | 合集入口 | 内容 | 状态 | 相关脚本 |
+| 分类 | 榜单入口 | 内容 | 状态 | 相关脚本 |
 | --- | --- | --- | --- | --- |
-| 国内剧场 | 国内各大剧场精选 | 爱奇艺迷雾/恋恋/小逗、腾讯 X、优酷白夜/生花等 | **按需加入** | `monthly/douban-iqiyi-*.ts`、`douban-tencent-x-theater.ts`、`douban-youku-*.ts` |
-| 海外平台 | 全球流媒体平台 | Netflix、HBO 等网络与电影厂牌的 TMDB Discover 子榜 | **按需加入** | `weekly/zh-streaming-platforms.ts` |
-| 海外厂牌 | 全球电影厂牌 | 各电影公司新片 | **按需加入** | `weekly/zh-global-studios.ts` |
+| 国内剧场 | 爱奇艺、腾讯视频、优酷剧场 | 爱奇艺迷雾/恋恋/小逗、腾讯 X、优酷白夜/生花等 | **已接入** | `create-flymby-first-batch-charts.ts` |
+| 海外平台 | Netflix、Disney+、HBO、Apple TV+、Prime Video | 各平台热播剧集 | **已接入** | `create-flymby-first-batch-charts.ts` |
+| 海外厂牌 | 20th Century、A24、Disney、Warner 等 | 各电影公司新片 | **已接入** | `create-flymby-first-batch-charts.ts` |
 | 平台动态 | 流媒体平台动态 | 依赖 Trakt 的平台榜单 | **需确认** | `weekly/zh-fusion-streaming.ts` |
 | 奖项/年代/导演 | 电影奖项、年代、导演合集 | Fusion 子榜单与合集 | **按需加入，需确认** | `manual/zh-fusion-awards.ts`、`zh-fusion-decades.ts`、`zh-fusion-directors.ts`、`zh-fusion-collections.ts` |
 | 英文部件 | MDBList Widgets | 英文外部小组件 | **暂不加入** | `manual/en-mdblist-widgets.ts` |

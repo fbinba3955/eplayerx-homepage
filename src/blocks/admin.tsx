@@ -53,6 +53,7 @@ import {
 	DEFAULT_LANGUAGE,
 	type HomeBlock,
 	type MediaType,
+	type SnapshotItem,
 	type SubmissionRow,
 	type TmdbListRoute,
 } from "./types.js";
@@ -100,6 +101,13 @@ function isAdminBearer(c: Context): boolean {
 	const pw = adminPassword();
 	const header = c.req.header("Authorization") || "";
 	return !!pw && header === `Bearer ${pw}`;
+}
+
+/** 供本地受控发布器与 GitHub Actions 使用的独立 Bearer 校验。 */
+function isSnapshotPublisher(c: Context): boolean {
+	const token = process.env.BLOCKS_PUBLISH_TOKEN;
+	const authorization = c.req.header("Authorization") || "";
+	return !!token && authorization === `Bearer ${token}`;
 }
 
 /** Published `collection-list` community blocks, for the admin panel. */
@@ -230,6 +238,86 @@ app.post("/api/report", async (c) => {
 		);
 	}
 	return c.json({ ok: true, blockId, itemCount, collectionPreviews });
+});
+
+interface PublishSnapshotBody {
+	blockId?: string;
+	title?: string;
+	category?: string;
+	mediaType?: string;
+	isAnime?: boolean;
+	items?: SnapshotItem[];
+}
+
+/**
+ * 将本地完成来源校验与 TMDB 匹配的快照一次性写入 Worker 绑定的 R2、D1。
+ * 该接口仅接受专用发布密钥，避免为了本地批量发布而暴露 R2 凭据。
+ */
+app.post("/api/publish-snapshot", async (c) => {
+	if (!isSnapshotPublisher(c)) return c.json({ error: "unauthorized" }, 401);
+	const body = (await c.req.json().catch(() => ({}))) as PublishSnapshotBody;
+	const blockId = String(body.blockId ?? "").trim();
+	const title = String(body.title ?? "").trim();
+	const items = Array.isArray(body.items) ? body.items : [];
+	if (!/^[a-zA-Z0-9_-]+$/.test(blockId) || !title) {
+		return c.json({ error: "invalid blockId or title" }, 400);
+	}
+	if (items.length === 0 || items.length > 1500) {
+		return c.json({ error: "invalid snapshot item count" }, 400);
+	}
+	if (items.some((item) => !item || !Number.isInteger(item.tmdbId) || item.tmdbId <= 0 || !item.title)) {
+		return c.json({ error: "invalid snapshot item" }, 400);
+	}
+	const bucket = c.env.ASSETS;
+	if (!bucket) return c.json({ error: "R2 bucket 未绑定（ASSETS）" }, 500);
+
+	const category = pickEnum(body.category, CATEGORIES, "tv" as BlockCategory);
+	const mediaType = pickEnum(body.mediaType, MEDIA_TYPES, "tv" as MediaType);
+	const now = new Date().toISOString();
+	const snapshot = {
+		type: "community_block" as const,
+		count: items.length,
+		lastUpdated: now,
+		title,
+		data: items,
+	};
+	await bucket.put(publicKey(blockId), JSON.stringify(snapshot), {
+		httpMetadata: { contentType: "application/json" },
+	});
+
+	const db = getDb(c);
+	await upsertBlockSnapshot(db, {
+		blockId,
+		itemCount: items.length,
+		scriptPath: "scripts/blocks/manual/create-flymby-first-batch-charts.ts",
+		updatedAt: now,
+	});
+	const block: HomeBlock = {
+		id: blockId,
+		title,
+		mediaType,
+		preset: "poster-list",
+		showRank: true,
+		showOverview: false,
+		source: { path: `/blocks/data/${blockId}`, itemEnvelope: "data" },
+		...(body.isAnime === true ? { metadata: { isAnime: true } } : {}),
+	};
+	if (await communityBlockExists(db, blockId)) {
+		await updateCommunityBlockItemCount(db, blockId, items.length);
+	} else {
+		await insertCommunityBlock(db, {
+			blockId,
+			category,
+			title,
+			blockJson: JSON.stringify(block),
+			dataKey: publicKey(blockId),
+			itemCount: items.length,
+			author: "Flymby",
+			language: DEFAULT_LANGUAGE,
+			createdAt: now,
+		});
+	}
+	return c.json({ ok: true, blockId, itemCount: items.length });
 });
 
 interface RegisterHiddenBody {

@@ -5,11 +5,12 @@ name: Refresh blocks
 #   scripts/blocks/weekly/   -> every Sunday
 #   scripts/blocks/monthly/  -> 1st of each month
 #   scripts/blocks/manual/   -> only via workflow_dispatch
+#   Flymby managed snapshots -> scheduled below by source refresh frequency
 on:
   schedule:
-    - cron: "0 20 * * *" # daily group
-    - cron: "0 21 * * 0" # weekly group (Sunday)
-    - cron: "0 22 1 * *" # monthly group (1st)
+    - cron: "0 20 * * *" # 每日 04:00（北京时间）
+    - cron: "0 21 * * 6" # 每周日 05:00（北京时间）
+    - cron: "0 22 1 * *" # 每月 1 日 06:00（北京时间）
   workflow_dispatch:
     inputs:
       target:
@@ -49,7 +50,7 @@ jobs:
           case "${{ github.event_name }}/${{ github.event.schedule }}" in
             workflow_dispatch/*) target="${{ github.event.inputs.target }}" ;;
             */"0 20 * * *") target="daily" ;;
-            */"0 21 * * 0") target="weekly" ;;
+            */"0 21 * * 6") target="weekly" ;;
             *) target="monthly" ;;
           esac
           echo "Target: $target"
@@ -68,3 +69,25 @@ jobs:
             bun run "$f" || { echo "::warning::$f failed"; failed=1; }
           done
           exit $failed
+
+      # Flymby 后台展示的部分榜单由统一生成器维护：它通过 Worker 写入
+      # R2/D1，单个来源失败时保留上一份快照，不影响同批其他榜单刷新。
+      - name: Refresh Flymby managed snapshots
+        if: github.event_name == 'schedule'
+        env:
+          FLYHUB_BLOCKS_API_BASE_URL: https://flyhub-blocks.yaii.workers.dev
+          FLYHUB_BLOCKS_PUBLISH_TOKEN: ${{ secrets.BLOCKS_PUBLISH_TOKEN }}
+        run: |
+          case "${{ github.event.schedule }}" in
+            "0 21 * * 6")
+              ids="collection-mal-weekdays,collection-guoman-weekdays,collection-mal-rankings"
+              ;;
+            "0 22 1 * *")
+              ids="community-douban-popular-anime-doulist,community-douban-top-animation-movies,community-douban-healing-anime,community-douban-cn-animation-movies,community-tspdt-1000,community-rolling-stone-100-tv,community-wga-101-best-written-tv"
+              ;;
+            *)
+              exit 0
+              ;;
+          esac
+          echo "Refresh Flymby managed snapshots: $ids"
+          FLYHUB_BLOCKS_BATCH_IDS="$ids" bun run scripts/blocks/manual/create-flymby-first-batch-charts.ts

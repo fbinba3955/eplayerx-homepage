@@ -89,7 +89,8 @@ jobs:
       - name: Refresh Flymby managed snapshots
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target != 'manual')
         env:
-          FLYHUB_BLOCKS_API_BASE_URL: https://flyhub-blocks.yaii.workers.dev
+          # 关键变量：使用已绑定资源的自定义域名，避免依赖 workers.dev 域名解析。
+          FLYHUB_BLOCKS_API_BASE_URL: https://bangdan.190147.xyz
           FLYHUB_BLOCKS_PUBLISH_TOKEN: ${{ secrets.BLOCKS_PUBLISH_TOKEN }}
         run: |
           daily_ids="community-douban-hot-domestic-tv,community-douban-hot-hong-kong-tv,community-douban-hot-taiwan-tv,community-douban-hot-korean-tv,community-douban-hot-japanese-tv,community-douban-hot-thai-tv,community-douban-hot-american-tv,community-douban-hot-animation,community-douban-hot-variety-shows,community-anilist-trending,community-bangumi-calendar"

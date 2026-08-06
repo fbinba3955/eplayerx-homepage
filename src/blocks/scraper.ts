@@ -13,7 +13,8 @@ const TMDB_BASE =
 	process.env.PUBLIC_TMDB_API_BASE_URL || "https://api.themoviedb.org";
 
 const MAX_PAGES = 5;
-const ENRICH_TOP_N = 20;
+// 关键变量：社区榜单最多保存 100 条，前 100 条都补齐 TMDB 图片元数据。
+const ENRICH_TOP_N = 100;
 const IMAGE_CONCURRENCY = 5;
 
 export class ScrapeError extends Error {}

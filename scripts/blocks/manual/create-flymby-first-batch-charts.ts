@@ -90,6 +90,9 @@ const OUTPUT_DIRECTORY =
 const ANIMATION_GENRE_ID = 16;
 const REQUEST_DELAY_MS = 120;
 const MATCH_CONCURRENCY = 8;
+// 关键变量：Flymby APP 榜单统一保留前 100 条，供详情页继续分页加载。
+const MAX_ITEMS_PER_CHART = 100;
+const TMDB_ITEMS_PER_PAGE = 20;
 
 /** 国内视频平台剧场分别展示，便于按平台直接进入。 */
 const DOMESTIC_THEATER_CHARTS: readonly ChartDefinition[] = [
@@ -461,7 +464,7 @@ const FIRST_BATCH_CHARTS: readonly ChartDefinition[] = [
 		isAnime: false,
 		fetchItems: async () => {
 			const knownIds: Record<string, number> = { 七三一: 1321624, 重生: 1301470 };
-			return (await fetchEndataDayItems(ENDATA_TV_TYPE.movie, { limit: 30 }))
+			return (await fetchEndataDayItems(ENDATA_TV_TYPE.movie, { limit: MAX_ITEMS_PER_CHART }))
 				.filter((item) => item.title !== "机械军团")
 				.map((item) => ({ ...item, tmdbId: knownIds[item.title] }));
 		},
@@ -478,7 +481,7 @@ const FIRST_BATCH_CHARTS: readonly ChartDefinition[] = [
 				女王驾到: 235728, "格蕾西·达琳迷案第一季": 271823,
 				曼达洛人第一季: 82856, "曼达洛人第三季（The Mandalorian Season 3）": 82856,
 			};
-			return (await fetchEndataDayItems(ENDATA_TV_TYPE.tv, { limit: 30 })).map((item) => ({ ...item, tmdbId: knownIds[item.title] }));
+			return (await fetchEndataDayItems(ENDATA_TV_TYPE.tv, { limit: MAX_ITEMS_PER_CHART })).map((item) => ({ ...item, tmdbId: knownIds[item.title] }));
 		},
 	},
 	{
@@ -493,7 +496,7 @@ const FIRST_BATCH_CHARTS: readonly ChartDefinition[] = [
 				"鬼灭之刃 刀匠村篇": 85937, 鬼灭之刃: 85937, 光阴之外: 281233,
 				师兄啊师兄: 218642, 凡人修仙传: 106449, 海贼王: 37854,
 			};
-			return (await fetchEndataDayItems(ENDATA_TV_TYPE.anime, { limit: 30 })).map((item) => ({ ...item, tmdbId: knownIds[item.title] }));
+			return (await fetchEndataDayItems(ENDATA_TV_TYPE.anime, { limit: MAX_ITEMS_PER_CHART })).map((item) => ({ ...item, tmdbId: knownIds[item.title] }));
 		},
 	},
 	{
@@ -502,7 +505,7 @@ const FIRST_BATCH_CHARTS: readonly ChartDefinition[] = [
 		category: "tv",
 		mediaType: "tv",
 		isAnime: false,
-		fetchItems: () => fetchGuduoBillboardItems("NETWORK_DRAMA"),
+		fetchItems: () => fetchGuduoBillboardItems("NETWORK_DRAMA", MAX_ITEMS_PER_CHART),
 	},
 	{
 		id: "community-iqiyi-hot-tv",
@@ -1033,17 +1036,19 @@ async function resolveSourceItem(
 
 /** 按榜单顺序解析第三方标题为完整 TMDB 条目，并以有限并发避免生成过慢。 */
 async function resolveSourceItems(definition: ChartDefinition, sourceItems: SourceItem[]): Promise<SnapshotItem[]> {
-	const results: Array<SnapshotItem | null> = new Array(sourceItems.length).fill(null);
+	// 关键变量：来源可能返回数百条，只解析 APP 约定的前 100 条，避免无边界请求 TMDB。
+	const limitedSourceItems = sourceItems.slice(0, MAX_ITEMS_PER_CHART);
+	const results: Array<SnapshotItem | null> = new Array(limitedSourceItems.length).fill(null);
 	let nextIndex = 0;
 	/** 一个工作协程负责按序领取并解析待处理标题。 */
 	async function resolveWorker(): Promise<void> {
-		while (nextIndex < sourceItems.length) {
+		while (nextIndex < limitedSourceItems.length) {
 			const currentIndex = nextIndex;
 			nextIndex += 1;
-			results[currentIndex] = await resolveSourceItem(definition, sourceItems[currentIndex]);
+			results[currentIndex] = await resolveSourceItem(definition, limitedSourceItems[currentIndex]);
 		}
 	}
-	await Promise.all(Array.from({ length: Math.min(MATCH_CONCURRENCY, sourceItems.length) }, () => resolveWorker()));
+	await Promise.all(Array.from({ length: Math.min(MATCH_CONCURRENCY, limitedSourceItems.length) }, () => resolveWorker()));
 
 	const result: SnapshotItem[] = [];
 	const usedIds = new Set<number>();
@@ -1054,19 +1059,37 @@ async function resolveSourceItems(definition: ChartDefinition, sourceItems: Sour
 		usedIds.add(snapshotItem.tmdbId);
 		result.push(snapshotItem);
 	}
-	return result;
+	return result.slice(0, MAX_ITEMS_PER_CHART);
 }
 
 /** 读取 TMDB 直出榜单并转换为公开快照条目。 */
 async function fetchTmdbChart(definition: ChartDefinition): Promise<SnapshotItem[]> {
-	const response = await fetch(new URL(definition.tmdbEndpoint || "", API_BASE_URL));
-	if (!response.ok) {
-		throw new Error(`${definition.title} 请求失败：HTTP ${response.status}`);
+	const chartUrl = new URL(definition.tmdbEndpoint || "", API_BASE_URL);
+	const startPage = Number.parseInt(chartUrl.searchParams.get("page") || "1", 10) || 1;
+	const items: SnapshotItem[] = [];
+	const usedIds = new Set<number>();
+
+	for (let page = startPage; items.length < MAX_ITEMS_PER_CHART; page += 1) {
+		chartUrl.searchParams.set("page", String(page));
+		const response = await fetch(chartUrl);
+		if (!response.ok) {
+			throw new Error(`${definition.title} 第 ${page} 页请求失败：HTTP ${response.status}`);
+		}
+		const payload = await response.json() as TmdbListResponse;
+		const pageItems = (payload.results || [])
+			.map((item) => toSnapshotItem(item, definition.mediaType))
+			.filter((item): item is SnapshotItem => item !== null);
+		for (const item of pageItems) {
+			if (!usedIds.has(item.tmdbId)) {
+				usedIds.add(item.tmdbId);
+				items.push(item);
+			}
+		}
+		if (pageItems.length < TMDB_ITEMS_PER_PAGE) {
+			break;
+		}
 	}
-	const payload = await response.json() as TmdbListResponse;
-	return (payload.results || [])
-		.map((item) => toSnapshotItem(item, definition.mediaType))
-		.filter((item): item is SnapshotItem => item !== null);
+	return items.slice(0, MAX_ITEMS_PER_CHART);
 }
 
 /** 构造保存在 D1 的榜单定义，供 /blocks/import-payload 读取。 */

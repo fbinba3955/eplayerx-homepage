@@ -13,9 +13,15 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "daily | weekly | monthly | manual | single script path (e.g. weekly/bahamut-quarterly.ts)"
+        description: "选择手动执行范围"
         required: true
         default: "manual"
+        type: choice
+        options:
+          - manual
+          - weekly
+          - monthly
+          - weekly_and_monthly
 
 concurrency:
   group: blocks-refresh
@@ -53,6 +59,10 @@ jobs:
             workflow_dispatch/*) target="${{ github.event.inputs.target }}" ;;
             *) exit 0 ;;
           esac
+          # Flymby 托管榜单由后续专用发布步骤处理，避免普通手动脚本重复抓取。
+          if [[ "$target" != "manual" ]]; then
+            exit 0
+          fi
           echo "Target: $target"
 
           if [[ "$target" == *.ts ]]; then
@@ -65,6 +75,7 @@ jobs:
           for f in "scripts/blocks/$target"/*.ts; do
             name="$(basename "$f")"
             [ "$name" = "_template.ts" ] && continue
+            [ "$name" = "create-flymby-first-batch-charts.ts" ] && continue
             echo "▶ $f"
             bun run "$f" || { echo "::warning::$f failed"; failed=1; }
           done
@@ -73,7 +84,7 @@ jobs:
       # Flymby 后台展示的部分榜单由统一生成器维护：它通过 Worker 写入
       # R2/D1，单个来源失败时保留上一份快照，不影响同批其他榜单刷新。
       - name: Refresh Flymby managed snapshots
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target != 'manual')
         env:
           FLYHUB_BLOCKS_API_BASE_URL: https://flyhub-blocks.yaii.workers.dev
           FLYHUB_BLOCKS_PUBLISH_TOKEN: ${{ secrets.BLOCKS_PUBLISH_TOKEN }}
@@ -86,7 +97,20 @@ jobs:
               ids="community-douban-popular-anime-doulist,community-douban-top-animation-movies,community-douban-healing-anime,community-douban-cn-animation-movies,community-tspdt-1000,community-rolling-stone-100-tv,community-wga-101-best-written-tv"
               ;;
             *)
-              exit 0
+              case "${{ github.event.inputs.target }}" in
+                weekly)
+                  ids="collection-mal-weekdays,collection-guoman-weekdays,collection-mal-rankings"
+                  ;;
+                monthly)
+                  ids="community-douban-popular-anime-doulist,community-douban-top-animation-movies,community-douban-healing-anime,community-douban-cn-animation-movies,community-tspdt-1000,community-rolling-stone-100-tv,community-wga-101-best-written-tv"
+                  ;;
+                weekly_and_monthly)
+                  ids="collection-mal-weekdays,collection-guoman-weekdays,collection-mal-rankings,community-douban-popular-anime-doulist,community-douban-top-animation-movies,community-douban-healing-anime,community-douban-cn-animation-movies,community-tspdt-1000,community-rolling-stone-100-tv,community-wga-101-best-written-tv"
+                  ;;
+                *)
+                  exit 0
+                  ;;
+              esac
               ;;
           esac
           echo "Refresh Flymby managed snapshots: $ids"

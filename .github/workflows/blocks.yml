@@ -8,7 +8,6 @@ name: Refresh blocks
 #   Flymby managed snapshots -> scheduled below by source refresh frequency
 on:
   schedule:
-    - cron: "0 20 * * *" # 每日 04:00（北京时间）
     - cron: "0 21 * * 6" # 每周日 05:00（北京时间）
     - cron: "0 22 1 * *" # 每月 1 日 06:00（北京时间）
   workflow_dispatch:
@@ -46,12 +45,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run block scripts
+        # 原仓库脚本依赖单独的 R2 密钥；Fork 不继承这些密钥，保留手动入口，
+        # 避免它在定时任务中提前失败而阻断 Flymby 托管榜单刷新。
+        if: github.event_name == 'workflow_dispatch'
         run: |
           case "${{ github.event_name }}/${{ github.event.schedule }}" in
             workflow_dispatch/*) target="${{ github.event.inputs.target }}" ;;
-            */"0 20 * * *") target="daily" ;;
-            */"0 21 * * 6") target="weekly" ;;
-            *) target="monthly" ;;
+            *) exit 0 ;;
           esac
           echo "Target: $target"
 

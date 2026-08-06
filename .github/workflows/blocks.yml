@@ -8,6 +8,7 @@ name: Refresh blocks
 #   Flymby managed snapshots -> scheduled below by source refresh frequency
 on:
   schedule:
+    - cron: "0 20 * * *" # 每日 04:00（北京时间）
     - cron: "0 21 * * 6" # 每周日 05:00（北京时间）
     - cron: "0 22 1 * *" # 每月 1 日 06:00（北京时间）
   workflow_dispatch:
@@ -19,9 +20,11 @@ on:
         type: choice
         options:
           - manual
+          - daily
           - weekly
           - monthly
           - weekly_and_monthly
+          - daily_weekly_monthly
 
 concurrency:
   group: blocks-refresh
@@ -89,23 +92,35 @@ jobs:
           FLYHUB_BLOCKS_API_BASE_URL: https://flyhub-blocks.yaii.workers.dev
           FLYHUB_BLOCKS_PUBLISH_TOKEN: ${{ secrets.BLOCKS_PUBLISH_TOKEN }}
         run: |
+          daily_ids="community-douban-hot-domestic-tv,community-douban-hot-korean-tv,community-douban-hot-american-tv,community-douban-hot-animation,community-douban-hot-japanese-tv,community-douban-hot-variety-shows,community-anilist-trending,community-bangumi-calendar"
+          weekly_ids="collection-mal-weekdays,collection-guoman-weekdays,collection-mal-rankings"
+          monthly_ids="community-douban-popular-anime-doulist,community-douban-top-animation-movies,community-douban-healing-anime,community-douban-cn-animation-movies,community-tspdt-1000,community-rolling-stone-100-tv,community-wga-101-best-written-tv"
           case "${{ github.event.schedule }}" in
+            "0 20 * * *")
+              ids="$daily_ids"
+              ;;
             "0 21 * * 6")
-              ids="collection-mal-weekdays,collection-guoman-weekdays,collection-mal-rankings"
+              ids="$weekly_ids"
               ;;
             "0 22 1 * *")
-              ids="community-douban-popular-anime-doulist,community-douban-top-animation-movies,community-douban-healing-anime,community-douban-cn-animation-movies,community-tspdt-1000,community-rolling-stone-100-tv,community-wga-101-best-written-tv"
+              ids="$monthly_ids"
               ;;
             *)
               case "${{ github.event.inputs.target }}" in
+                daily)
+                  ids="$daily_ids"
+                  ;;
                 weekly)
-                  ids="collection-mal-weekdays,collection-guoman-weekdays,collection-mal-rankings"
+                  ids="$weekly_ids"
                   ;;
                 monthly)
-                  ids="community-douban-popular-anime-doulist,community-douban-top-animation-movies,community-douban-healing-anime,community-douban-cn-animation-movies,community-tspdt-1000,community-rolling-stone-100-tv,community-wga-101-best-written-tv"
+                  ids="$monthly_ids"
                   ;;
                 weekly_and_monthly)
-                  ids="collection-mal-weekdays,collection-guoman-weekdays,collection-mal-rankings,community-douban-popular-anime-doulist,community-douban-top-animation-movies,community-douban-healing-anime,community-douban-cn-animation-movies,community-tspdt-1000,community-rolling-stone-100-tv,community-wga-101-best-written-tv"
+                  ids="$weekly_ids,$monthly_ids"
+                  ;;
+                daily_weekly_monthly)
+                  ids="$daily_ids,$weekly_ids,$monthly_ids"
                   ;;
                 *)
                   exit 0

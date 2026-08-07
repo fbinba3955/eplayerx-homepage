@@ -1,6 +1,6 @@
 #:schema node_modules/wrangler/config-schema.json
 
-name = "eplayerx-homepage"
+name = "flyhub-blocks"
 main = "src/worker.ts"
 compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
@@ -8,33 +8,23 @@ compatibility_flags = ["nodejs_compat"]
 # Keep the default *.workers.dev address alive.
 workers_dev = true
 
-# Public routes for this Worker.
-routes = [
-	{ pattern = "api.eplayerx.com", custom_domain = true },
-	{ pattern = "tmdb.eplayerx.com", custom_domain = true },
-	{ pattern = "eplayerx.com/blocks*", zone_name = "eplayerx.com" },
-]
-
 [placement]
 mode = "smart"
 
 [observability]
 enabled = true
 
-# D1 database for EplayerX Blocks (community submissions + approved blocks).
-# Create once: `wrangler d1 create eplayerx-blocks`, then paste the returned
-# database_id below. Apply schema: `wrangler d1 migrations apply eplayerx-blocks`.
+# FlyHub Blocks database (community submissions + published blocks).
 [[d1_databases]]
 binding = "DB"
-database_name = "blocks"
-database_id = "e8ba17f1-93da-4903-8ee5-53e2ace245cf"
+database_name = "flyhub-blocks"
+database_id = "95c87b62-3fdc-4bd3-855c-fe7d2554f577"
 migrations_dir = "migrations"
 
-# Existing crawler/snapshot bucket (served publicly via assets.eplayerx.com).
-# Bound so the admin panel can upload collection child logos directly.
+# FlyHub Blocks snapshots and collection assets.
 [[r2_buckets]]
 binding = "ASSETS"
-bucket_name = "crawler"
+bucket_name = "flyhub-blocks"
 
 # Uncomment to enable cron trigger (e.g. daily crawl at 08:00 UTC)
 # [triggers]

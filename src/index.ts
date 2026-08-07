@@ -22,13 +22,22 @@ const publicCors = cors({
 	maxAge: 86400,
 });
 
+/**
+ * Flymby consumes published Blocks directly from the Worker. These routes
+ * intentionally have no client authentication or origin allowlist; content
+ * mutation stays inside the separately password-protected `/admin` app.
+ */
+const publicBlocksCors = cors({
+	origin: "*",
+	allowHeaders: ["Content-Type", "Authorization"],
+	allowMethods: ["GET", "HEAD", "POST", "OPTIONS"],
+	maxAge: 86400,
+});
+
 app.use("/tmdb/*", publicCors);
 app.use("/tmdb/*", tmdbCacheMiddleware);
 app.use("/crawler/*", publicCors);
-app.use("/blocks/community", publicCors);
-app.use("/blocks/data/*", publicCors);
-app.use("/blocks/import-payload", publicCors);
-app.use("/blocks/collections/*", publicCors);
+app.use("/blocks/*", publicBlocksCors);
 
 const welcomeStrings = [
 	"Hello Hono!",

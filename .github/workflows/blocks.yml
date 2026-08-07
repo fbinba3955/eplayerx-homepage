@@ -1,16 +1,14 @@
 name: Refresh blocks
 
 # Refresh cadence is folder-based, decided by the admin when placing a script:
-#   scripts/blocks/daily/    -> every day
-#   scripts/blocks/weekly/   -> every Sunday
-#   scripts/blocks/monthly/  -> 1st of each month
+#   scripts/blocks/daily/    -> manual only
+#   scripts/blocks/weekly/   -> manual only
+#   scripts/blocks/monthly/  -> manual only
 #   scripts/blocks/manual/   -> only via workflow_dispatch
-#   Flymby managed snapshots -> scheduled below by source refresh frequency
+#   Flymby managed snapshots -> every two hours refresh all managed snapshots
 on:
   schedule:
-    - cron: "0 20 * * *" # 每日 04:00（北京时间）
-    - cron: "0 21 * * 6" # 每周日 05:00（北京时间）
-    - cron: "0 22 1 * *" # 每月 1 日 06:00（北京时间）
+    - cron: "17 */2 * * *" # 每两小时的第 17 分钟，避开整点调度拥堵
   workflow_dispatch:
     inputs:
       target:
@@ -96,38 +94,30 @@ jobs:
           daily_ids="community-douban-hot-domestic-tv,community-douban-hot-hong-kong-tv,community-douban-hot-taiwan-tv,community-douban-hot-korean-tv,community-douban-hot-japanese-tv,community-douban-hot-thai-tv,community-douban-hot-american-tv,community-douban-hot-animation,community-douban-hot-variety-shows,community-anilist-trending,community-bangumi-calendar"
           weekly_ids="collection-mal-weekdays,collection-guoman-weekdays,collection-mal-rankings,community-zh-studio-20th-century,community-zh-studio-a24,community-zh-studio-amblin,community-zh-studio-columbia,community-zh-studio-dc,community-zh-studio-dreamworks,community-zh-studio-legendary,community-zh-studio-lionsgate,community-zh-studio-lucasfilm,community-zh-studio-mgm,community-zh-studio-millennium,community-zh-studio-miramax,community-zh-studio-newline,community-zh-studio-orion,community-zh-studio-paramount,community-zh-studio-pixar,community-zh-studio-sony,community-zh-studio-universal,community-zh-studio-disney,community-zh-studio-warner,community-zh-netflix,community-zh-disney-plus,community-zh-hbo,community-zh-apple-tv-plus,community-zh-prime-video,community-douban-chinese-best-variety,community-douban-global-best-variety"
           monthly_ids="community-iqiyi-lianlian-theater,community-iqiyi-mist-theater,community-iqiyi-xiaodou-theater,community-tencent-x-theater,community-youku-baiye-theater,community-youku-shenghua-theater,community-douban-popular-anime-doulist,community-douban-top-animation-movies,community-douban-healing-anime,community-douban-cn-animation-movies,community-tspdt-1000,community-rolling-stone-100-tv,community-wga-101-best-written-tv"
-          case "${{ github.event.schedule }}" in
-            "0 20 * * *")
-              ids="$daily_ids"
-              ;;
-            "0 21 * * 6")
-              ids="$weekly_ids"
-              ;;
-            "0 22 1 * *")
-              ids="$monthly_ids"
-              ;;
-            *)
-              case "${{ github.event.inputs.target }}" in
-                daily)
-                  ids="$daily_ids"
-                  ;;
-                weekly)
-                  ids="$weekly_ids"
-                  ;;
-                monthly)
-                  ids="$monthly_ids"
-                  ;;
-                weekly_and_monthly)
-                  ids="$weekly_ids,$monthly_ids"
-                  ;;
-                daily_weekly_monthly)
-                  ids="$daily_ids,$weekly_ids,$monthly_ids"
-                  ;;
-                *)
-                  exit 0
-                  ;;
-              esac
-              ;;
-          esac
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            # 定时任务始终刷新全部 Flymby 托管榜单，确保不同原始刷新频率的榜单也能及时更新。
+            ids="$daily_ids,$weekly_ids,$monthly_ids"
+          else
+            case "${{ github.event.inputs.target }}" in
+              daily)
+                ids="$daily_ids"
+                ;;
+              weekly)
+                ids="$weekly_ids"
+                ;;
+              monthly)
+                ids="$monthly_ids"
+                ;;
+              weekly_and_monthly)
+                ids="$weekly_ids,$monthly_ids"
+                ;;
+              daily_weekly_monthly)
+                ids="$daily_ids,$weekly_ids,$monthly_ids"
+                ;;
+              *)
+                exit 0
+                ;;
+            esac
+          fi
           echo "Refresh Flymby managed snapshots: $ids"
           FLYHUB_BLOCKS_BATCH_IDS="$ids" bun run scripts/blocks/manual/create-flymby-first-batch-charts.ts

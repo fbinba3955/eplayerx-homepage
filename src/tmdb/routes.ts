@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import { applyTmdbAuthentication } from "./auth.js";
 import { tmdb } from "./client.js";
 
 const tmdbApp = new Hono();
@@ -165,7 +166,8 @@ export async function tmdbCacheMiddleware(c: Context, next: () => Promise<void>)
 }
 
 async function proxyTmdbDiscover(c: Context, path: string) {
-  if (!process.env.TMDB_API_TOKEN) {
+	const tmdbToken = process.env.TMDB_API_TOKEN;
+	if (!tmdbToken) {
     throw new Error("TMDB_API_TOKEN is not set");
   }
 
@@ -179,12 +181,9 @@ async function proxyTmdbDiscover(c: Context, path: string) {
     upstream.searchParams.append(key, value);
   }
 
-  const response = await fetch(upstream, {
-    headers: {
-      accept: "application/json",
-      Authorization: `Bearer ${process.env.TMDB_API_TOKEN}`,
-    },
-  });
+	const response = await fetch(upstream, {
+		headers: applyTmdbAuthentication(upstream, tmdbToken),
+	});
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {

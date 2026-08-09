@@ -8,17 +8,17 @@
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fetchBahamutQuarterly } from "../lib/bahamut.js";
+import { fetchBangumiCalendarDay, fetchBangumiRankedAnime, fetchBangumiTodayCalendar } from "../lib/bangumi.js";
 import { fetchDoulistItems, fetchSubjectCollectionItems } from "../lib/douban.js";
 import { ENDATA_TV_TYPE, fetchEndataDayItems } from "../lib/endata.js";
-import { fetchGuduoBillboardItems } from "../lib/guduo.js";
-import { fetchMalRankingItems } from "../lib/mal.js";
-import { fetchBangumiCalendarDay, fetchBangumiRankedAnime, fetchBangumiTodayCalendar } from "../lib/bangumi.js";
-import { fetchBahamutQuarterly } from "../lib/bahamut.js";
-import { fetchGuomanWeekday, GUOMAN_DAYS } from "../lib/guoman-weekdays.js";
-import { fetchLetterboxdListItems } from "../lib/letterboxd.js";
-import { fetchMalScheduleItems, type MalWeekday } from "../lib/mal.js";
-import { fetchTraktListItems } from "../lib/trakt.js";
 import { GLOBAL_STUDIOS } from "../lib/global-studios.js";
+import { fetchGuduoBillboardItems } from "../lib/guduo.js";
+import { fetchGuomanWeekday, GUOMAN_DAYS } from "../lib/guoman-weekdays.js";
+import { fetchImdbChartTvItems } from "../lib/imdb-chart.js";
+import { fetchLetterboxdListItems } from "../lib/letterboxd.js";
+import { fetchMalRankingItems, fetchMalScheduleItems, type MalWeekday } from "../lib/mal.js";
+import { fetchTraktListItems } from "../lib/trakt.js";
 import TSPDT_ITEMS from "./tspdt-1000-data.json";
 
 type MediaType = "movie" | "tv";
@@ -145,6 +145,28 @@ const BANGUMI_TOP_KNOWN_IDS: Record<string, number> = {
 	"JOJO的奇妙冒险 星尘斗士 埃及篇": 45790,
 };
 
+// 关键变量：IMDb 对部分系列的拆分方式与 TMDB 不同，需要固定到正确的 TMDB 剧集。
+const IMDB_TV_TOP_KNOWN_IDS: Record<string, number> = {
+	tt0214341: 12971,
+	tt0280249: 12609,
+	tt0096548: 7246,
+	tt0088484: 7246,
+	tt0092324: 7246,
+	tt0090509: 799,
+	tt4093826: 1920,
+};
+
+const MAOYAN_BOARD_URL = "https://www.maoyan.com/board/4";
+const MAOYAN_BOARD_PAGE_COUNT = 10;
+
+// 关键变量：猫眼部分影片展示中国重映年份，固定 ID 可避免按年份匹配到同名作品。
+const MAOYAN_TOP_KNOWN_IDS: Record<string, number> = {
+	美丽人生: 637,
+	天堂电影院: 11216,
+	一一: 25538,
+	入殓师: 16804,
+};
+
 const WEEKDAY_NAMES: readonly MalWeekday[] = [
 	"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
 ];
@@ -223,6 +245,54 @@ async function fetchRtPopularTvItems(): Promise<SourceItem[]> {
 	}
 	if (items.length < 10) throw new Error(`烂番茄解析条目过少：${items.length}`);
 	return items.sort((left, right) => left.rank - right.rank).map((item) => ({ title: item.title }));
+}
+
+/** 携带同一组 WAF Cookie 读取一页猫眼电影榜单。 */
+async function fetchMaoyanBoardPage(url: string, cookies: Map<string, string>): Promise<string> {
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		const response = await fetch(url, {
+			redirect: "manual",
+			headers: {
+				...WEB_HEADERS,
+				Cookie: Array.from(cookies, ([key, value]) => `${key}=${value}`).join("; "),
+			},
+		});
+		for (const value of response.headers.getSetCookie()) {
+			const [cookiePair] = value.split(";");
+			const separatorIndex = cookiePair.indexOf("=");
+			if (separatorIndex > 0) {
+				cookies.set(cookiePair.slice(0, separatorIndex), cookiePair.slice(separatorIndex + 1));
+			}
+		}
+		if (response.status === 200) {
+			return response.text();
+		}
+		if (response.status !== 302) {
+			throw new Error(`猫眼来源请求失败：HTTP ${response.status}`);
+		}
+		await delay(300);
+	}
+	throw new Error("猫眼来源持续重定向，未能通过 WAF Cookie 校验");
+}
+
+/** 抓取猫眼电影 TOP100，并保留影片年份辅助 TMDB 匹配。 */
+async function fetchMaoyanTop100Items(): Promise<SourceItem[]> {
+	const cookies = new Map<string, string>();
+	const items: SourceItem[] = [];
+	for (let page = 0; page < MAOYAN_BOARD_PAGE_COUNT; page += 1) {
+		const html = await fetchMaoyanBoardPage(`${MAOYAN_BOARD_URL}?offset=${page * 10}`, cookies);
+		const rows = html.matchAll(
+			/class="name"><a[^>]*title="([^"]+)"[\s\S]*?class="releasetime">上映时间：(\d{4})/g,
+		);
+		for (const [, title, year] of rows) {
+			items.push({ title, tmdbId: MAOYAN_TOP_KNOWN_IDS[title], year: Number(year) });
+		}
+		await delay(500);
+	}
+	if (items.length < 50) {
+		throw new Error(`猫眼解析条目过少：${items.length}`);
+	}
+	return items;
 }
 
 /** 抓取 BFI Sight & Sound 的评论家前 100 电影。 */
@@ -657,6 +727,14 @@ const FIRST_BATCH_CHARTS: readonly ChartDefinition[] = [
 		fetchItems: () => fetchTraktListItems("justin", "imdb-top-rated-movies", "movies"),
 	},
 	{
+		id: "community-imdb-top250-tv",
+		title: "IMDb 剧集 Top 250",
+		category: "tv",
+		mediaType: "tv",
+		isAnime: false,
+		fetchItems: () => fetchImdbChartTvItems("imdb.com/chart/toptv/", IMDB_TV_TOP_KNOWN_IDS),
+	},
+	{
 		id: "community-imdb-popular-movies",
 		title: "IMDb 热门电影",
 		category: "movie",
@@ -671,6 +749,14 @@ const FIRST_BATCH_CHARTS: readonly ChartDefinition[] = [
 		mediaType: "tv",
 		isAnime: false,
 		fetchItems: () => fetchTraktListItems("justin", "imdb-popular-tv-shows", "shows"),
+	},
+	{
+		id: "community-maoyan-top100",
+		title: "猫眼电影 TOP100",
+		category: "movie",
+		mediaType: "movie",
+		isAnime: false,
+		fetchItems: fetchMaoyanTop100Items,
 	},
 	{
 		id: "community-letterboxd-oscar-best-picture",
@@ -1144,6 +1230,11 @@ async function main(): Promise<void> {
 		.split(",")
 		.map((id) => id.trim())
 		.filter(Boolean);
+	const availableIds = new Set(FIRST_BATCH_CHARTS.map((chart) => chart.id));
+	const unknownIds = requestedIds.filter((id) => !availableIds.has(id));
+	if (unknownIds.length > 0) {
+		throw new Error(`以下榜单 ID 未在统一生成器中定义：${unknownIds.join(", ")}`);
+	}
 	const charts = requestedIds.length > 0
 		? FIRST_BATCH_CHARTS.filter((chart) => requestedIds.includes(chart.id))
 		: FIRST_BATCH_CHARTS;

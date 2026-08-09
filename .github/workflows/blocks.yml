@@ -121,3 +121,11 @@ jobs:
           fi
           echo "Refresh Flymby managed snapshots: $ids"
           FLYHUB_BLOCKS_BATCH_IDS="$ids" bun run scripts/blocks/manual/create-flymby-first-batch-charts.ts
+
+      - name: Refresh Hongguo hot short drama
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.target == 'daily' || github.event.inputs.target == 'daily_weekly_monthly'))
+        env:
+          # 关键变量：短剧快照与其他 Flymby 托管榜单使用同一 Worker 发布入口。
+          FLYHUB_BLOCKS_API_BASE_URL: https://bangdan.190147.xyz
+          FLYHUB_BLOCKS_PUBLISH_TOKEN: ${{ secrets.BLOCKS_PUBLISH_TOKEN }}
+        run: bun run scripts/blocks/daily/hongguo-hot-short-drama.ts

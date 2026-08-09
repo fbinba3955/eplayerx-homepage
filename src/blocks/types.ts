@@ -60,6 +60,11 @@ export interface ScrapeOptions {
 export interface SnapshotItem {
 	title: string;
 	tmdbId: number;
+	/** 短剧快照使用来源侧作品 ID；此时 tmdbId 固定为 0，禁止误跳 TMDB。 */
+	seriesId?: string;
+	/** 短剧等非 TMDB 内容的数据渠道标识。 */
+	source?: string;
+	episodeCount?: number | null;
 	imdbId?: string | null;
 	tvdbId?: number | null;
 	vote_average: number | null;
@@ -139,7 +144,7 @@ export interface HomeBlock {
 		pagination?: { pageParam?: string; startPage?: number };
 	};
 	route?: TmdbListRoute;
-	metadata?: { isAnime?: boolean };
+	metadata?: { isAnime?: boolean; contentType?: "short_drama" };
 }
 
 // MARK: - Collections (a named group of charts rendered as one home section)

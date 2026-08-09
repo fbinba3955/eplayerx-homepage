@@ -246,7 +246,25 @@ interface PublishSnapshotBody {
 	category?: string;
 	mediaType?: string;
 	isAnime?: boolean;
+	contentType?: string;
 	items?: SnapshotItem[];
+}
+
+/** 校验由 Flymby 托管任务提交的普通 TMDB 条目或红果短剧条目。 */
+function isValidPublishedSnapshotItem(
+	item: SnapshotItem,
+	contentType: string,
+): boolean {
+	if (!item || !item.title) return false;
+	if (contentType === "short_drama") {
+		return (
+			item.tmdbId === 0 &&
+			typeof item.seriesId === "string" &&
+			/^\d+$/.test(item.seriesId) &&
+			item.source === "hongguo"
+		);
+	}
+	return Number.isInteger(item.tmdbId) && item.tmdbId > 0;
 }
 
 /**
@@ -265,7 +283,8 @@ app.post("/api/publish-snapshot", async (c) => {
 	if (items.length === 0 || items.length > 1500) {
 		return c.json({ error: "invalid snapshot item count" }, 400);
 	}
-	if (items.some((item) => !item || !Number.isInteger(item.tmdbId) || item.tmdbId <= 0 || !item.title)) {
+	const contentType = String(body.contentType ?? "").trim();
+	if (items.some((item) => !isValidPublishedSnapshotItem(item, contentType))) {
 		return c.json({ error: "invalid snapshot item" }, 400);
 	}
 	const bucket = c.env.ASSETS;
@@ -300,7 +319,16 @@ app.post("/api/publish-snapshot", async (c) => {
 		showRank: true,
 		showOverview: false,
 		source: { path: `/blocks/data/${blockId}`, itemEnvelope: "data" },
-		...(body.isAnime === true ? { metadata: { isAnime: true } } : {}),
+		...(body.isAnime === true || contentType === "short_drama"
+			? {
+					metadata: {
+						...(body.isAnime === true ? { isAnime: true } : {}),
+						...(contentType === "short_drama"
+							? { contentType: "short_drama" as const }
+							: {}),
+					},
+				}
+			: {}),
 	};
 	if (await communityBlockExists(db, blockId)) {
 		await updateCommunityBlockItemCount(db, blockId, items.length);

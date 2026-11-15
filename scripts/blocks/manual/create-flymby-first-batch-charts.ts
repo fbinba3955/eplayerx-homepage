@@ -302,9 +302,11 @@ async function fetchBfiSightSoundItems(): Promise<SourceItem[]> {
 	const films: Array<{ rank: number; title: string; year?: number }> = [];
 	for (const chunk of (await response.text()).split("<article ").slice(1)) {
 		if (!chunk.includes("PreviewCard__Article")) continue;
-		const title = chunk.replace(/<!-- -->/g, "").match(/<h1>([^<]+)<\/h1>/);
-		const rank = chunk.match(/ResultsPage__Rank[^>]*>=?(\d+)</);
-		const year = chunk.match(/ResultsPage__P[^>]*>(\d{4})[^<]*</);
+		// 并列排名形如 =<!-- -->31，标题、排名和年份均需读取去掉注释后的内容。
+		const content = chunk.replace(/<!-- -->/g, "");
+		const title = content.match(/<h1>([^<]+)<\/h1>/);
+		const rank = content.match(/ResultsPage__Rank[^>]*>=?(\d+)</);
+		const year = content.match(/ResultsPage__P[^>]*>(\d{4})[^<]*</);
 		if (!title || !rank) continue;
 		films.push({
 			rank: Number.parseInt(rank[1], 10),
@@ -732,7 +734,7 @@ const FIRST_BATCH_CHARTS: readonly ChartDefinition[] = [
 		category: "tv",
 		mediaType: "tv",
 		isAnime: false,
-		fetchItems: () => fetchImdbChartTvItems("imdb.com/chart/toptv/", IMDB_TV_TOP_KNOWN_IDS),
+		fetchItems: () => fetchImdbChartTvItems("imdb.com/chart/toptv/", IMDB_TV_TOP_KNOWN_IDS, findImdbTvIdThroughWorker),
 	},
 	{
 		id: "community-imdb-popular-movies",
@@ -1058,6 +1060,19 @@ async function fetchJustWatchStreamingItems(): Promise<SourceItem[]> {
 		const content = edge.node?.content;
 		return content?.title ? [{ title: content.title, year: content.originalReleaseYear }] : [];
 	});
+}
+
+/** 通过已有 Worker 按 IMDb ID 精确查找剧集，避免托管刷新依赖本地 TMDB 密钥。 */
+async function findImdbTvIdThroughWorker(imdbId: string): Promise<number | null> {
+	const url = new URL("/tmdb/find", API_BASE_URL);
+	url.searchParams.set("id", imdbId);
+	url.searchParams.set("external_source", "imdb_id");
+	const response = await fetchWorkerWithRetry(url, "IMDb剧集ID匹配");
+	if (!response.ok) {
+		throw new Error(`IMDb 剧集 ID 匹配失败：${imdbId} HTTP ${response.status}`);
+	}
+	const payload = await response.json() as { tv_results?: { id: number }[] };
+	return payload.tv_results?.[0]?.id ?? null;
 }
 
 /** 通过 Worker 搜索指定媒体类型，必要时使用备选标题。 */

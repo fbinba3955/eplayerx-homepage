@@ -76,13 +76,15 @@ async function findTvIdByImdbId(imdbId: string): Promise<number | null> {
 export async function fetchImdbChartTvItems(
 	chartUrl: string,
 	knownIds: Record<string, number> = {},
+	// 托管榜单可传入 Worker 查询方法，独立发布脚本仍默认使用原有 TMDB 直连。
+	resolveTvId: (imdbId: string) => Promise<number | null> = findTvIdByImdbId,
 ): Promise<PublishItem[]> {
 	const edges = await fetchChartEdges(chartUrl);
 	const items: PublishItem[] = [];
 	for (const edge of edges) {
 		const imdbId = edge.node.id;
 		const title = edge.node.titleText.text;
-		const tmdbId = knownIds[imdbId] ?? (await findTvIdByImdbId(imdbId));
+		const tmdbId = knownIds[imdbId] ?? (await resolveTvId(imdbId));
 		if (!tmdbId) {
 			console.log(`⚠️ No TMDB match for ${imdbId} (${title}); skipped`);
 			continue;

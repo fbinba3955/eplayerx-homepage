@@ -320,7 +320,13 @@ async function fetchBfiSightSoundItems(): Promise<SourceItem[]> {
 		"In the Mood for Love": 843, Mirror: 1396, Stalker: 1398, "Yi Yi": 25538, Daisies: 46919,
 		"The Leopard": 1040, "Black Girl": 95597, "Beau travail": 14626, Parasite: 496243, "Close-Up": 30017,
 	};
-	return ranked.map((film) => ({ ...film, tmdbId: knownIds[film.title] }));
+	return ranked.map((film): SourceItem => {
+		// 《电影史》在 TMDB 中是完整剧集，避免误匹配到单独发布的第一章节电影。
+		if (film.title === "Histoire(s) du Cinéma") {
+			return { ...film, tmdbId: 206647, mediaType: "tv" };
+		}
+		return { ...film, tmdbId: knownIds[film.title] };
+	});
 }
 
 /** 从 Rolling Stone 的分页画廊中读取百大剧集。 */
